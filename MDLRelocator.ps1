@@ -1,12 +1,11 @@
-﻿Set-StrictMode -Version Latest
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Unrestricted
-#Set-ExecutionPolicy RemoteSigned
+Set-StrictMode -Version Latest
+Set-ExecutionPolicy RemoteSigned
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 
-function toErrorMsg($errorMessage) {
+function ErrorMsg($errorMessage) {
     [System.Windows.Forms.MessageBox]::Show($errorMessage, "Error", 
     [System.Windows.Forms.MessageBoxButtons]::OK, 
     [System.Windows.Forms.MessageBoxIcon]::Error)
@@ -27,7 +26,6 @@ function UpdateStatusFilesChecked() {
     } else {
         $selectAllButton.Enabled = $true
     }
-      
 }
 function UpdateStatusFilesFound() {
     $countFnd = $listView.Items.Count
@@ -39,7 +37,6 @@ function UpdateStatusFilesFound() {
     } else {
         $searchBox.ReadOnly = $true
     }
-
     $listView.AutoResizeColumns([System.Windows.Forms.ColumnHeaderAutoResizeStyle]::HeaderSize)
     UpdateStatusFilesChecked
 }
@@ -53,7 +50,7 @@ function checkList($bool) {
 	$listView.EndUpdate()
     $listView.ResumeLayout()
 }
-function toConsoleMsg($text, $color) {
+function WriteConsole($text, $color) {
     $colorMap = @{
         "G" = 0xFF98FB98
         "R" = 0xFFf63a3a
@@ -69,10 +66,8 @@ function toConsoleMsg($text, $color) {
 }
 $global:providedPath = $null
 $global:rootModels = $null
-
-### FIND CROWBAR 
-
 $scriptDirectory = $null
+
 if ($MyInvocation.MyCommand.CommandType -eq "ExternalScript"){ # Powershell script
 	$scriptDirectory = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
 } else { # PS2EXE compiled script
@@ -88,16 +83,16 @@ function Find-StudioMDL {
         $studioMDLPathTextbox.Text = $studiomdlPath
 		Find-MDLFiles
     } else {
-        toErrorMsg("studiomdl.exe is neccessary and was not found at the expected location.`nPlease provide the location of the executable.")
+        ErrorMsg("studiomdl.exe is neccessary and was not found at the expected location.`nPlease provide the location of the executable.")
         $fileDialog = New-Object System.Windows.Forms.OpenFileDialog
         $fileDialog.InitialDirectory = "C:\Program Files (x86)\Steam\steamapps\common\"
         $fileDialog.Filter = 'StudioMDL Executable (studiomdl.exe)|studiomdl.exe'
         $fileDialog.Title = 'Select studiomdl.exe'
         if ($fileDialog.ShowDialog() -eq 'OK') {
             $studioMDLPathTextbox.Text = $fileDialog.FileName
-			Find-MDLFiles
+	    Find-MDLFiles
         } else {
-            toErrorMsg("Unable to continue without StudioMDL.exe")
+            ErrorMsg("Unable to continue without StudioMDL.exe")
             return $false
             $form.Close()
         }
@@ -108,7 +103,7 @@ function Find-ModelFolder($folder) {
         $global:providedPath = $folder
         $global:rootModels = $Matches[1]
     } else {
-        toErrorMsg("The selected folder is neither 'models' nor one of its subfolders.`nA common mistake is to confuse the /materials/models folder with the /models folder.")
+        ErrorMsg("The selected folder is neither 'models' nor one of its subfolders.`nA common mistake is to confuse the /materials/models folder with the /models folder.")
         return $false
     }
     $providedPathTextbox.Text = $global:providedPath
@@ -128,7 +123,7 @@ function DragDropMDL($files) {
             $item.Checked = $true
             $listView.Items.Add($item)
         } else {
-            ToConsoleMsg "[ERROR] The model file must be in the '/models' folder or one of its subfolder." "R"
+            WriteConsole "[ERROR] The model file must be in the '/models' folder or one of its subfolder." "R"
         }
     }
     UpdateStatusFilesFound
@@ -140,15 +135,14 @@ function DragDropMDL($files) {
     $listView.Add_ItemChecked({ UpdateStatusFilesChecked }) 
     Find-StudioMDL
 	
-	# HANDLE THE CASE WHERE MODELS COME FROM DIFFERENT GAMES FOLDER
+	# TO DO: HANDLE THE CASE WHERE MODELS COME FROM DIFFERENT GAMES FOLDER
 }
 function Find-MDLFiles () {
     $statusCol0.Text = "Searching for your files..."
     $listView.Remove_ItemChecked({ UpdateStatusFilesChecked }) 
     $form.SuspendLayout()
     $mdlFiles = Get-ChildItem -Path $global:providedPath -Recurse -File -Filter *.mdl
-    #$listView.VirtualMode = $true
-    #$listView.VirtualListSize = $mdlFiles.Count
+    # TO DO: USE VIRTUAL MODE
     $listView.BeginUpdate()
     foreach ($mdlFile in $mdlFiles) {
         $item = New-Object Windows.Forms.ListViewItem
@@ -164,14 +158,14 @@ function Find-MDLFiles () {
     $form.ResumeLayout()
 
     if ($listView.Items.Count -eq 0) {
-		ToConsoleMsg "Sorry, no .MDL files found at this location." "R"
+		WriteConsole "Sorry, no .MDL files found at this location." "R"
     }
     $items = foreach ($item in $listView.Items) {
         $item.Text
     }
     $searchBox.AutoCompleteCustomSource.AddRange($items)
     UpdateStatusFilesFound
-    $listView.Add_ItemChecked({ UpdateStatusFilesChecked })	
+    $listView.Add_ItemChecked({ UpdateStatusFilesChecked })
 }
 
 ### PROCESS FILES
@@ -194,9 +188,9 @@ function ProcessFiles () {
             $qcPathBackup = $fullPath -replace '\.mdl$', '.mdl.bak'
             try {
                 Copy-Item -Path $fullPath -Destination $qcPathBackup
-                ToConsoleMsg "[SUCCESS] Backup for $($item.SubItems[0].Text) created." "G"
+                WriteConsole "[SUCCESS] Backup for $($item.SubItems[0].Text) created." "G"
             } catch {
-                ToConsoleMsg"[ERROR]: $_. Unable to create a backup for $($item.SubItems[0].Text)" "R"
+                WriteConsole"[ERROR]: $_. Unable to create a backup for $($item.SubItems[0].Text)" "R"
             }
         }
         $CrowbarCMDs += "`"$crowbarExePath`" `"$fullPath`""
@@ -211,19 +205,19 @@ function ProcessFiles () {
     if (Test-Path $batchCrowbar -PathType Leaf) {
         try {
             $output = Invoke-Expression "& `"$batchCrowbar`""
-            ToConsoleMsg "Decompiling model files..." "Y"
-            ToConsoleMsg($output -join "`r`n") 
-            ToConsoleMsg "Deleting Crowbar batch file..." "Y"
+            WriteConsole "Decompiling model files..." "Y"
+            WriteConsole($output -join "`r`n") 
+            WriteConsole "Deleting Crowbar batch file..." "Y"
             Remove-Item -Path $batchCrowbar -Force
         } catch {
-            ToConsoleMsg "[ERROR] Executing the batch file $_ failed" "R"
+            WriteConsole "[ERROR] Executing the batch file $_ failed" "R"
         }
     } else {
-        ToConsoleMsg "[ERROR] Generated batch file not found at: $batchCrowbar" "R"
+        WriteConsole "[ERROR] Generated batch file not found at: $batchCrowbar" "R"
     }
 
 ### EDITING QC FILES
-    ToConsoleMsg "Now editing .QC files..." "Y"
+    WriteConsole "Now editing .QC files..." "Y"
     $pattern = '(?m)^(.*)\$modelname[\t ]+"(.+)\.mdl"'
     $studiomdlPath = $studioMDLPathTextbox.Text
     foreach ($item in $checkedItems) {
@@ -243,45 +237,45 @@ function ProcessFiles () {
                                
                     try {
                         $qcContent | Set-Content -Path $qcPath -Force
-                        ToConsoleMsg "[SUCCESS] Updated `$modelname in $qcName" "G"
+                        WriteConsole "[SUCCESS] Updated `$modelname in $qcName" "G"
 
                         $StudioCMDs += "`"$studiomdlPath`" -nop4 -nox360 -fastbuild `"$qcPath`""
                     } catch {
-                        ToConsoleMsg "[ERROR] Failed to update $qcName : $_" "R"
+                        WriteConsole "[ERROR] Failed to update $qcName : $_" "R"
                     }
               } else {
-                    ToConsoleMsg "[ERROR] No match found in $qcName" "R"
+                    WriteConsole "[ERROR] No match found in $qcName" "R"
               }
         } else {
-            ToConsoleMsg "[ERROR] $qcPath is not a valid path" "R"
+            WriteConsole "[ERROR] $qcPath is not a valid path" "R"
         }
 		$DeleteCMDs += "Get-ChildItem `"$mdlFolder`" -Filter `"${qcNameNoExt}.qc`" | Remove-Item -Force"
 		$DeleteCMDs += "Get-ChildItem `"$mdlFolder`" -Filter `"${qcNameNoExt}*.smd`" | Remove-Item -Force"
 		$DeleteCMDs += "Get-ChildItem `"$mdlFolder`" -Filter `"${qcNameNoExt}_anims`" | Remove-Item -Force -Recurse"
     } 
 ### RECOMPILE
-	ToConsoleMsg "Recompiling models to .MDL files with StudioMDL.exe..." "Y"
+	WriteConsole "Recompiling models to .MDL files with StudioMDL.exe..." "Y"
     $StudioCMDs = $StudioCMDs -join "`r`n"
     $StudioCMDs = "cd `"$studiomdlPath`"`r`n" + $StudioCMDs
     $StudioCMDs | Set-Content -Path $batchStudioMDL -Encoding ASCII
     if (Test-Path $batchStudioMDL -PathType Leaf) {
         try {
             $output = Invoke-Expression "& `"$batchStudioMDL`""
-            ToConsoleMsg($output -join "`r`n") 
-            ToConsoleMsg "Deleting StudioMDL batch file..." "Y"
+            WriteConsole($output -join "`r`n") 
+            WriteConsole "Deleting StudioMDL batch file..." "Y"
             Remove-Item -Path $batchStudioMDL -Force
         } catch {
-            ToConsoleMsg "[ERROR] Executing the batch file $_ failed" "R"
+            WriteConsole "[ERROR] Executing the batch file $_ failed" "R"
         }
     } else {
-        ToConsoleMsg "[ERROR] Unable to find generated batch file at: $batchStudioMDL" "R"
+        WriteConsole "[ERROR] Unable to find generated batch file at: $batchStudioMDL" "R"
     }
 ### DELETE TEMP FILES
-	ToConsoleMsg "Deleting obsolete extracted files..." "Y"
+	WriteConsole "Deleting obsolete extracted files..." "Y"
 	foreach ($command in $DeleteCMDs) {
 		Invoke-Expression $command
 	}
-	ToConsoleMsg "WORK DONE!" "G"
+	WriteConsole "WORK DONE!" "G"
     $listView.Items.Clear()
     $relocateButton.Enabled = $false
 }                                                      
