@@ -8,7 +8,7 @@ For Source 1 Engine models: modifies $modelname in .QC file to the current path 
 
 Launch "MDLRelocator.ps1" from PowerShell (tested from version 5.1).
 
-Select a folder which contains .MDL files or drag'n drop .MDL files on the list.
+Select a folder which contains .MDL files or drag'n drop .MDL files on the list. The rest is autocompleted.
 
 Your files need to be in the /models folder or one of its subfolder.
 
