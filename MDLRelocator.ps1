@@ -1,6 +1,5 @@
 Set-StrictMode -Version Latest
 Set-ExecutionPolicy RemoteSigned
-
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
@@ -59,15 +58,15 @@ function WriteConsole($text, $color) {
     if ($color) {
         $fakeConsole.SelectionColor =  [System.Drawing.Color]::FromArgb($colorMap[$color]) 
     }
-	$fakeConsole.AppendText($text+"`r`n")
-	$fakeConsole.SelectionColor = $fakeConsole.ForeColor
+    $fakeConsole.AppendText($text+"`r`n")
+    $fakeConsole.SelectionColor = $fakeConsole.ForeColor
     $fakeConsole.SelectionStart = $fakeConsole.Text.Length
     $fakeConsole.ScrollToCaret()
 }
 $global:providedPath = $null
 $global:rootModels = $null
-$scriptDirectory = $null
 
+$scriptDirectory = $null
 if ($MyInvocation.MyCommand.CommandType -eq "ExternalScript"){ # Powershell script
 	$scriptDirectory = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
 } else { # PS2EXE compiled script
@@ -78,7 +77,6 @@ $crowbarExePath = Join-Path -Path $scriptDirectory -ChildPath "CrowbarDecompiler
 
 function Find-StudioMDL {
     $studiomdlPath = Get-Item (Join-Path (Get-Item $global:rootModels).Parent.Parent.FullName "bin\studiomdl.exe")
-
     if ($null -ne $studiomdlPath -and $studiomdlPath.Exists) {
         $studioMDLPathTextbox.Text = $studiomdlPath
 		Find-MDLFiles
@@ -90,7 +88,7 @@ function Find-StudioMDL {
         $fileDialog.Title = 'Select studiomdl.exe'
         if ($fileDialog.ShowDialog() -eq 'OK') {
             $studioMDLPathTextbox.Text = $fileDialog.FileName
-	    Find-MDLFiles
+            Find-MDLFiles
         } else {
             ErrorMsg("Unable to continue without StudioMDL.exe")
             return $false
@@ -99,7 +97,7 @@ function Find-StudioMDL {
     }
 }
 function Find-ModelFolder($folder) {
-    if ($folder -match '^(.*?(?<!materials)\\models).+(?:\\|$)') {
+    if ($folder -match '^(.*?(?<!materials)\\models).*(?:\\|$)') {
         $global:providedPath = $folder
         $global:rootModels = $Matches[1]
     } else {
@@ -115,9 +113,9 @@ function DragDropMDL($files) {
     foreach ($file in $files) {
         if ($file -match $pattern) {
             $item = New-Object Windows.Forms.ListViewItem
-			$filename = [System.IO.Path]::GetFileName($file)
+            $filename = [System.IO.Path]::GetFileName($file)
             $item.Text = $filename
-			$searchBox.AutoCompleteCustomSource.AddRange($filename)
+            $searchBox.AutoCompleteCustomSource.AddRange($filename)
             $relativePath = $file -replace '^(.*?\\models(?:\\|$))', ''
             $item.SubItems.Add($relativePath)
             $item.Checked = $true
@@ -134,8 +132,7 @@ function DragDropMDL($files) {
     }
     $listView.Add_ItemChecked({ UpdateStatusFilesChecked }) 
     Find-StudioMDL
-	
-	# TO DO: HANDLE THE CASE WHERE MODELS COME FROM DIFFERENT GAMES FOLDER
+# TO DO: HANDLE THE CASE WHERE MODELS COME FROM DIFFERENT GAMES FOLDER
 }
 function Find-MDLFiles () {
     $statusCol0.Text = "Searching for your files..."
@@ -147,8 +144,8 @@ function Find-MDLFiles () {
     foreach ($mdlFile in $mdlFiles) {
         $item = New-Object Windows.Forms.ListViewItem
         $item.Text = $mdlFile.Name
-		$item.Tag = ""
-		$searchBox.AutoCompleteCustomSource.AddRange($mdlFile.Name)
+        $item.Tag = ""
+        $searchBox.AutoCompleteCustomSource.AddRange($mdlFile.Name)
         $relativePath = $mdlFile.FullName.Substring($global:rootModels.Length)
         $item.SubItems.Add("$relativePath")
         $item.Checked = $true
@@ -158,7 +155,7 @@ function Find-MDLFiles () {
     $form.ResumeLayout()
 
     if ($listView.Items.Count -eq 0) {
-		WriteConsole "Sorry, no .MDL files found at this location." "R"
+        WriteConsole "Sorry, no .MDL files found at this location." "R"
     }
     $items = foreach ($item in $listView.Items) {
         $item.Text
@@ -173,14 +170,12 @@ function ProcessFiles () {
     $fakeConsole.Text = ""
     $checkedItems = $listView.CheckedItems
     $doBackup = $backupMDLcheckbox.Checked
-   
     $CrowbarCMDs = New-Object System.Collections.ArrayList
     $batchCrowbar = Join-Path -Path $scriptDirectory -ChildPath 'crowbar_.bat'
-
     $StudioCMDs = New-Object System.Collections.ArrayList
     $batchStudioMDL = Join-Path -Path $scriptDirectory -ChildPath 'studiomdl_.bat'
-
     $DeleteCMDs = New-Object System.Collections.ArrayList
+    $hasDependencies = @()
 
     foreach ($item in $checkedItems) {
         $fullPath = Join-Path -Path $global:rootModels -ChildPath $item.SubItems[1].Text
@@ -227,34 +222,33 @@ function ProcessFiles () {
         $qcNameNoExt = [System.IO.Path]::GetFileNameWithoutExtension($qcPath)
         $mdlFolder = [System.IO.Path]::GetDirectoryName($qcPath)
 
-        if (Test-Path $qcPath -PathType Leaf) {
-            
+        if (Test-Path $qcPath -PathType Leaf) {     
             $qcContent = Get-Content -Path $qcPath -Raw
-              
+                if ($qcContent -match '(?m)\$(collisiontext|includemodel)') {
+                    $hasDependencies += $qcName
+                }
                 if ($qcContent -match $pattern) {
                     $replacement = '$modelname "' + $item.SubItems[1].Text + '"'
-                    $qcContent = $qcContent -replace $pattern, $replacement
-                               
+                    $qcContent = $qcContent -replace $pattern, $replacement              
                     try {
                         $qcContent | Set-Content -Path $qcPath -Force
                         WriteConsole "[SUCCESS] Updated `$modelname in $qcName" "G"
-
                         $StudioCMDs += "`"$studiomdlPath`" -nop4 -nox360 -fastbuild `"$qcPath`""
                     } catch {
                         WriteConsole "[ERROR] Failed to update $qcName : $_" "R"
                     }
-              } else {
+                } else {
                     WriteConsole "[ERROR] No match found in $qcName" "R"
-              }
+		}
         } else {
             WriteConsole "[ERROR] $qcPath is not a valid path" "R"
         }
-		$DeleteCMDs += "Get-ChildItem `"$mdlFolder`" -Filter `"${qcNameNoExt}.qc`" | Remove-Item -Force"
-		$DeleteCMDs += "Get-ChildItem `"$mdlFolder`" -Filter `"${qcNameNoExt}*.smd`" | Remove-Item -Force"
-		$DeleteCMDs += "Get-ChildItem `"$mdlFolder`" -Filter `"${qcNameNoExt}_anims`" | Remove-Item -Force -Recurse"
-    } 
+	$DeleteCMDs += "Get-ChildItem `"$mdlFolder`" -Filter `"${qcNameNoExt}.qc`" | Remove-Item -Force"
+	$DeleteCMDs += "Get-ChildItem `"$mdlFolder`" -Filter `"${qcNameNoExt}*.smd`" | Remove-Item -Force"
+	$DeleteCMDs += "Get-ChildItem `"$mdlFolder`" -Filter `"${qcNameNoExt}_anims`" | Remove-Item -Force -Recurse"
+    }
 ### RECOMPILE
-	WriteConsole "Recompiling models to .MDL files with StudioMDL.exe..." "Y"
+    WriteConsole "Recompiling models to .MDL files with StudioMDL.exe..." "Y"
     $StudioCMDs = $StudioCMDs -join "`r`n"
     $StudioCMDs = "cd `"$studiomdlPath`"`r`n" + $StudioCMDs
     $StudioCMDs | Set-Content -Path $batchStudioMDL -Encoding ASCII
@@ -275,8 +269,14 @@ function ProcessFiles () {
 	foreach ($command in $DeleteCMDs) {
 		Invoke-Expression $command
 	}
-	WriteConsole "WORK DONE!" "G"
+### DONE
+	WriteConsole "WORK DONE!`r`n" "G"
+	if ($hasDependencies.Count -gt 0) {
+		$hasDependencies = $hasDependencies -join "`r`n"
+		WriteConsole "WARNING!`r`nThe following models have dependencies. If you modified their paths, dependencies will no longer be satisfied:`r`n$hasDependencies" "R"
+	}
     $listView.Items.Clear()
+	UpdateStatusFilesFound
     $relocateButton.Enabled = $false
 }                                                      
 
@@ -372,32 +372,34 @@ function New-UI {
     $form.Controls.Add($rootModelsTextbox)
 
 # TEXTBOX : Search box (autocomplete)
-	$searchBoxLabel = New-Object Windows.Forms.Label
+    $searchBoxLabel = New-Object Windows.Forms.Label
     $searchBoxLabel.Text = "Find a file in the list:"
-	$searchBoxLabel.Size = New-Object Drawing.Size @(180,20)
-	$searchBoxLabel.Location = New-Object System.Drawing.Size(20,465)
-	$form.Controls.Add($searchBoxLabel)
-	$searchBox = New-Object System.Windows.Forms.TextBox
-	$searchBox.Location = New-Object System.Drawing.Size(210,460)
-	$searchBox.Size = New-Object System.Drawing.Size(560,20)
+    $searchBoxLabel.Size = New-Object Drawing.Size @(180,20)
+    $searchBoxLabel.Location = New-Object System.Drawing.Size(20,465)
+    $form.Controls.Add($searchBoxLabel)
+    $searchBox = New-Object System.Windows.Forms.TextBox
+    $searchBox.Location = New-Object System.Drawing.Size(210,460)
+    $searchBox.Size = New-Object System.Drawing.Size(560,20)
     $searchBox.ReadOnly = $true
-	$searchBox.AutoCompleteMode='SuggestAppend'
-	$searchBox.AutoCompleteSource = 'CustomSource' 
-	$searchBox.Add_TextChanged({
-		$matchingItem = $listView.Items | Where-Object { $_.Text -eq $searchBox.Text }
-		if ($matchingItem) {
-			$listView.SelectedItems.Clear()
-			$matchingItem.Selected = $true
+    $searchBox.AutoCompleteMode='SuggestAppend'
+    $searchBox.AutoCompleteSource = 'CustomSource' 
+    $searchBox.Add_TextChanged({
+	$matchingItem = $listView.Items | Where-Object { $_.Text -eq $searchBox.Text }
+	if ($matchingItem) {
+            $listView.SelectedItems.Clear()
+	    $matchingItem.Selected = $true
             $matchingItem.EnsureVisible()
-		}
-	})
-	$Form.Controls.Add($searchBox)
+	}
+    })
+    $Form.Controls.Add($searchBox)
 	
 # LIST VIEW
     $listView = New-Object Windows.Forms.ListView
     $listView.Size = New-Object Drawing.Size @(750, 300)
     $listView.Location = New-Object Drawing.Point 20, 150
-    $listView.View = 'Details'
+    #$listView.FullRowSelect = $true
+    $listView.GridLines = $true #added
+    $listView.View = 'Details' #[System.Windows.Forms.View]::Details
     $listView.CheckBoxes = $true
     $listView.Columns.Add('File', 150)
     $listView.Columns.Add('$modelname new value', 300)
@@ -486,7 +488,7 @@ function New-UI {
     $fakeConsole.ScrollBars = "Vertical"
     $fakeConsole.ReadOnly = $true
     $fakeConsole.WordWrap = $true
-	$fakeConsole.Text = "Remember that :`r`n* MDL files can be dependencies of other MDL files.`r`n`* MDL files won't be at the same location if you share your maps.`r`nIf you're a modder or a mapper, don't forget to embed your custom resources in your .BSP file with BSPZIP for instance.`r`nIn any case, proceed with caution :)`r`n"
+	$fakeConsole.Text = "Remember that :`r`n* MDL files can be dependencies of other MDL files.`r`n`* MDL files won't be at the same location if you share your maps.`r`nIf you're a modder or a mapper, don't forget to embed your custom resources in your .BSP file with BSPZIP or VIDE for instance.`r`nIn any case, proceed with caution :)`r`n"
     $fakeConsole.Size = New-Object Drawing.Size @(890, 150)
     $fakeConsole.Location = New-Object Drawing.Point 20, 520
     $fakeConsole.BackColor = [System.Drawing.Color]::FromArgb(0xFF222222)
